@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -53,6 +54,13 @@ namespace GenericListDuplicate
                     Gender = "Female",
                     Origin = "Fire",
                     Type = "Warrior"
+                },
+                new Hero {
+                    Id = 7,
+                    Name = "Oret",
+                    Gender = "Female",
+                    Origin = "Water",
+                    Type = "Mage"
                 }
             };
 
@@ -89,7 +97,7 @@ namespace GenericListDuplicate
         {
             var groupByExpression = GroupByExpression<T>(parameters).Compile();
             var idProp = typeof(T).GetType().GetProperty(idParameter);
-            var groupedList = objectData.GroupBy(groupByExpression).Where(g => g.Skip(1).Any()).SelectMany(s => s).ToList();
+            var groupedList = objectData.GroupBy(groupByExpression).Where(g => g.Skip(1).Any()).Select(s => s.First()).ToList();
             //var selectedList = groupedList.SelectMany(os => os).ToList();
             //var duplicateList = selectedList.DistinctBy(groupByExpression).ToList();
             return objectData;
@@ -99,72 +107,56 @@ namespace GenericListDuplicate
         {
             var parameter = Expression.Parameter(typeof(T));
             var body = Expression.Property(parameter, propertyName);
-            return Expression.Lambda<Func<T, object>>(Expression.Convert(body, typeof(object)), parameter);
+            return Expression.Lambda<Func<T, object>>(Expression.PropertyOrField(body, propertyName), parameter);
+        }
+        static Expression<Func<T, object>> GroupByExpressionAggregate<T>(string[] propertyNames, ParameterExpression parameter)
+        {
+            var endExpression = default(Expression<Func<T, object>>);
+            var expression = default(Expression);
+            var propertyExpressions = propertyNames.Select(p => GetDeepPropertyExpression(parameter, p)).ToArray();            
+
+            if (propertyExpressions.Length == 1)
+                expression = propertyExpressions[0];
+            else
+            {
+                var concatMethod = typeof(string).GetMethod("Concat", new[] { typeof(string), typeof(string), typeof(string) });
+
+                var separator = Expression.Constant(",");
+                expression = propertyExpressions.Aggregate(
+                    (x, y) => Expression.Call(concatMethod, x, separator, y));
+            }
+            
+            endExpression = Expression.Lambda<Func<T, object>>(expression, parameter);
+            return endExpression;
+        }
+
+        static Expression<Func<T, object>> GroupByExpression<T>(string propertyName, ParameterExpression parameter)
+        {
+            //var body = Expression.Property(parameter, propertyName);
+            return Expression.Lambda<Func<T, object>>(Expression.PropertyOrField(parameter, propertyName), parameter);
         }
 
         static Expression<Func<T, object>> GroupByExpression<T>(string[] propertyNames)
         {
             var groupedExpression = default(Expression<Func<T, object>>);
-            foreach (var propertyName in propertyNames)
-            {
-                var exp = GroupByExpression<T>(propertyName);
-                var parameter = Expression.Parameter(typeof(T));
-                if (groupedExpression != null)
-                {
-                    var combinedExpr = TryCombiningExpressions(groupedExpression, exp);
-                    groupedExpression = Expression.Lambda<Func<T, object>>(combinedExpr, parameter);
-                    Console.Write(groupedExpression.ToString());
-                }
-                else
-                {
-                    groupedExpression = Expression.Lambda<Func<T, object>>(exp, parameter);
-                }
-            }
+            var parameter = Expression.Parameter(typeof(T));
+            groupedExpression = GroupByExpressionAggregate<T>(propertyNames, parameter);
             return groupedExpression;
         }
 
-        public static Expression<Func<T, object>> TryCombiningExpressions<T>(Expression<Func<T, object>> func1, Expression<Func<T, object>> func2)
+        private static Expression GetDeepPropertyExpression(Expression initialInstance, string property)
         {
-            return func1.CombineWithAndAlso(func2);
+            Expression result = null;
+            foreach (var propertyName in property.Split('.'))
+            {
+                Expression instance = result;
+                if (instance == null)
+                    instance = initialInstance;
+                result = Expression.Property(instance, propertyName);
+            }
+            return result;
         }
     }
 
-    public static class CombineExpressions
-    {
-        public static Expression<Func<TInput, object>> CombineWithAndAlso<TInput>(this Expression<Func<TInput, object>> func1, Expression<Func<TInput, object>> func2)
-        {
-            return Expression.Lambda<Func<TInput, object>>(
-                Expression.AndAlso(
-                    func1.Body, new ExpressionParameterReplacer(func2.Parameters, func1.Parameters).Visit(func2.Body)),
-                func1.Parameters);
-        }
 
-        public static Expression<Func<TInput, object>> CombineWithOrElse<TInput>(this Expression<Func<TInput, object>> func1, Expression<Func<TInput, object>> func2)
-        {
-            return Expression.Lambda<Func<TInput, object>>(
-                Expression.AndAlso(
-                    func1.Body, new ExpressionParameterReplacer(func2.Parameters, func1.Parameters).Visit(func2.Body)),
-                func1.Parameters);
-        }
-
-        private class ExpressionParameterReplacer : ExpressionVisitor
-        {
-            public ExpressionParameterReplacer(IList<ParameterExpression> fromParameters, IList<ParameterExpression> toParameters)
-            {
-                ParameterReplacements = new Dictionary<ParameterExpression, ParameterExpression>();
-                for (int i = 0; i != fromParameters.Count && i != toParameters.Count; i++)
-                    ParameterReplacements.Add(fromParameters[i], toParameters[i]);
-            }
-
-            private IDictionary<ParameterExpression, ParameterExpression> ParameterReplacements { get; set; }
-
-            protected override Expression VisitParameter(ParameterExpression node)
-            {
-                ParameterExpression replacement;
-                if (ParameterReplacements.TryGetValue(node, out replacement))
-                    node = replacement;
-                return base.VisitParameter(node);
-            }
-        }
-    }
 }
