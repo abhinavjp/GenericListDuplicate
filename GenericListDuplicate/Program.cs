@@ -18,53 +18,60 @@ namespace GenericListDuplicate
                     Name = "Azarus",
                     Gender = "Male",
                     Origin = "Earth",
-                    Type = "Wizard"
+                    Type = "Wizard",
+                    DateRecognized = DateTime.Parse("19/05/2145")
                 },
                 new Hero {
                     Id = 2,
                     Name = "Azarus",
                     Gender = "Male",
                     Origin = "Earth",
-                    Type = "Warrior"
+                    Type = "Warrior",
+                    DateRecognized = DateTime.Parse("19/05/2145")
                 },
                 new Hero {
                     Id = 3,
                     Name = "Lympiq",
                     Gender = "Female",
                     Origin = "Water",
-                    Type = "Rogue"
+                    Type = "Rogue",
+                    DateRecognized = DateTime.Parse("19/05/2145")
                 },
                 new Hero {
                     Id = 4,
                     Name = "Ria",
                     Gender = "Female",
                     Origin = "Fire",
-                    Type = "Warden"
+                    Type = "Warden",
+                    DateRecognized = DateTime.Parse("19/05/2056")
                 },
                 new Hero {
                     Id = 5,
                     Name = "Azarus",
                     Gender = "Male",
                     Origin = "Earth",
-                    Type = "Universalist"
+                    Type = "Universalist",
+                    DateRecognized = DateTime.Parse("19/05/2145")
                 },
                 new Hero {
                     Id = 6,
                     Name = "Ria",
                     Gender = "Female",
                     Origin = "Fire",
-                    Type = "Warrior"
+                    Type = "Warden",
+                    DateRecognized = DateTime.Parse("19/05/2056")
                 },
                 new Hero {
                     Id = 7,
                     Name = "Oret",
                     Gender = "Female",
                     Origin = "Water",
-                    Type = "Mage"
+                    Type = "Mage",
+                    DateRecognized = DateTime.Parse("01/03/2149")
                 }
             };
 
-            var duplicateList = GenericDuplicateChecker.CheckDuplicateList(heroList, "Id", "Name", "Gender", "Origin");
+            var duplicateList = GenericDuplicateChecker.CheckDuplicateList(heroList, "Name", "Gender", "Origin", "DateRecognized");
             Console.ReadKey();
 
         }
@@ -77,6 +84,7 @@ namespace GenericListDuplicate
         public string Type { get; set; }
         public string Gender { get; set; }
         public string Origin { get; set; }
+        public DateTime DateRecognized { get; set; }
 
         public bool Equals(Hero hero1, Hero hero2)
         {
@@ -93,69 +101,31 @@ namespace GenericListDuplicate
 
     public static class GenericDuplicateChecker
     {
-        public static List<T> CheckDuplicateList<T>(List<T> objectData, string idParameter, params string[] parameters)
+        public static List<T> CheckDuplicateList<T>(List<T> objectData, params string[] parameters)
         {
-            var groupByExpression = GroupByExpression<T>(parameters).Compile();
-            var idProp = typeof(T).GetType().GetProperty(idParameter);
+            var groupByExpression = SelectOrGroupByExpression<T>(parameters).Compile();
             var groupedList = objectData.GroupBy(groupByExpression).Where(g => g.Skip(1).Any()).Select(s => s.First()).ToList();
             //var selectedList = groupedList.SelectMany(os => os).ToList();
             //var duplicateList = selectedList.DistinctBy(groupByExpression).ToList();
-            return objectData;
+            return groupedList;
         }
 
-        static Expression<Func<T, object>> GroupByExpression<T>(string propertyName)
+        
+
+        public static Expression<Func<TItem, object>> SelectOrGroupByExpression<TItem>(string[] propertyNames)
         {
-            var parameter = Expression.Parameter(typeof(T));
-            var body = Expression.Property(parameter, propertyName);
-            return Expression.Lambda<Func<T, object>>(Expression.PropertyOrField(body, propertyName), parameter);
-        }
-        static Expression<Func<T, object>> GroupByExpressionAggregate<T>(string[] propertyNames, ParameterExpression parameter)
-        {
-            var endExpression = default(Expression<Func<T, object>>);
-            var expression = default(Expression);
-            var propertyExpressions = propertyNames.Select(p => GetDeepPropertyExpression(parameter, p)).ToArray();            
-
-            if (propertyExpressions.Length == 1)
-                expression = propertyExpressions[0];
-            else
-            {
-                var concatMethod = typeof(string).GetMethod("Concat", new[] { typeof(string), typeof(string), typeof(string) });
-
-                var separator = Expression.Constant(",");
-                expression = propertyExpressions.Aggregate(
-                    (x, y) => Expression.Call(concatMethod, x, separator, y));
-            }
-            
-            endExpression = Expression.Lambda<Func<T, object>>(expression, parameter);
-            return endExpression;
+            var properties = propertyNames.Select(name => typeof(TItem).GetProperty(name)).ToArray();
+            var propertyTypes = properties.Select(p => p.PropertyType).ToArray();
+            var tupleTypeDefinition = typeof(Tuple).Assembly.GetType("System.Tuple`" + properties.Length);
+            var tupleType = tupleTypeDefinition.MakeGenericType(propertyTypes);
+            var constructor = tupleType.GetConstructor(propertyTypes);
+            var param = Expression.Parameter(typeof(TItem), "item");
+            var body = Expression.New(constructor, properties.Select(p => Expression.Property(param, p)));
+            var expr = Expression.Lambda<Func<TItem, object>>(body, param);
+            return expr;
         }
 
-        static Expression<Func<T, object>> GroupByExpression<T>(string propertyName, ParameterExpression parameter)
-        {
-            //var body = Expression.Property(parameter, propertyName);
-            return Expression.Lambda<Func<T, object>>(Expression.PropertyOrField(parameter, propertyName), parameter);
-        }
-
-        static Expression<Func<T, object>> GroupByExpression<T>(string[] propertyNames)
-        {
-            var groupedExpression = default(Expression<Func<T, object>>);
-            var parameter = Expression.Parameter(typeof(T));
-            groupedExpression = GroupByExpressionAggregate<T>(propertyNames, parameter);
-            return groupedExpression;
-        }
-
-        private static Expression GetDeepPropertyExpression(Expression initialInstance, string property)
-        {
-            Expression result = null;
-            foreach (var propertyName in property.Split('.'))
-            {
-                Expression instance = result;
-                if (instance == null)
-                    instance = initialInstance;
-                result = Expression.Property(instance, propertyName);
-            }
-            return result;
-        }
+        
     }
 
 
