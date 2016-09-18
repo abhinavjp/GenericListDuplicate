@@ -77,7 +77,7 @@ namespace GenericListDuplicate
         }
     }
 
-    public class Hero : IEqualityComparer<Hero>
+    public class Hero
     {
         public int Id { get; set; }
         public string Name { get; set; }
@@ -85,18 +85,6 @@ namespace GenericListDuplicate
         public string Gender { get; set; }
         public string Origin { get; set; }
         public DateTime DateRecognized { get; set; }
-
-        public bool Equals(Hero hero1, Hero hero2)
-        {
-            if (hero1.Gender == hero2.Gender && hero1.Name == hero2.Name && hero1.Origin == hero2.Origin)
-                return true;
-            return false;
-        }
-
-        public int GetHashCode(Hero obj)
-        {
-            return obj.GetHashCode();
-        }
     }
 
     public static class GenericDuplicateChecker
@@ -105,8 +93,6 @@ namespace GenericListDuplicate
         {
             var groupByExpression = SelectOrGroupByExpression<T>(parameters).Compile();
             var groupedList = objectData.GroupBy(groupByExpression).Where(g => g.Skip(1).Any()).Select(s => s.First()).ToList();
-            //var selectedList = groupedList.SelectMany(os => os).ToList();
-            //var duplicateList = selectedList.DistinctBy(groupByExpression).ToList();
             return groupedList;
         }
 
